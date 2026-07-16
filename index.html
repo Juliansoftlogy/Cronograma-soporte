@@ -771,6 +771,7 @@ function toggleTeams(v){ showTeams=v; refresh(); }
 loadState();
 refresh();
 loadTeamsEvents(false);
+setInterval(()=>{ if(showTeams) loadTeamsEvents(false); }, 3600000); // auto-refresco cada 1 hora
 </script>
 </body>
 </html>
