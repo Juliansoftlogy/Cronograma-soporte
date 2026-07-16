@@ -117,8 +117,8 @@
   .day-h.today::before{content:"HOY";font-size:9px;font-weight:800;letter-spacing:.5px;color:#fff;background:var(--brand);border-radius:4px;padding:2px 6px;align-self:center}
   .act{display:grid;grid-template-columns:30px 5px 104px 130px 1fr auto;align-items:center;gap:12px;padding:10px 16px 10px 0;border-bottom:1px solid var(--line);background:var(--surface);transition:background .1s}
   .act:last-child{border-bottom:none}.act:hover{background:var(--surface-2)}
-  .act.teams{background:repeating-linear-gradient(135deg,#fafbff,#fafbff 10px,#f3f4fb 10px,#f3f4fb 20px)}
-  .act .stripe{align-self:stretch;border-radius:3px}.act.teams .stripe{border:1.5px dashed var(--teams);background:transparent !important}
+  .act.teams{background:var(--surface)}
+  .act .stripe{align-self:stretch;border-radius:3px}
   .act .time{font-size:12px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
   .act .time small{display:block;color:var(--faint);font-weight:500}.act .time .nextday{color:var(--warn);font-weight:700}
   .act .who{display:flex;align-items:center;gap:7px}
@@ -505,8 +505,9 @@ function renderAgenda(list){
       const mem=groups[k], rep=mem[0], isGroup=!!rep.groupId, cross=rep.fechaFin!==rep.fechaIni;
       if(rep.source==="teams"){
         const tc=`<div class="time">${rep.ini}<small>${cross?`<span class="nextday">${rep.fin} · ${fmtShort(rep.fechaFin)}</span>`:rep.fin}</small></div>`;
-        const who=`<div class="avatar" style="background:var(--teams)">T</div><span class="name" style="color:var(--muted)">${escapeHtml(rep.organizador||"Teams")}</span>`;
-        return `<div class="act teams"><div class="pick"></div><div class="stripe"></div>${tc}<div class="who">${who}</div><div class="body"><div class="subj">${escapeHtml(rep.asunto)}</div>${rep.descripcion?`<div class="desc">${escapeHtml(rep.descripcion)}</div>`:""}<div class="meta"><span class="teams-pill">Teams</span>${cross?`<span class="span-tag">termina ${fmtShort(rep.fechaFin)}</span>`:""}</div></div><div class="row-actions"></div></div>`;
+        const tcol=rep.tecnico?((TEAM[rep.tecnico]&&TEAM[rep.tecnico].color)||"var(--teams)"):"var(--teams)";
+        const who=rep.tecnico?`<div class="avatar" style="background:${tcol}">${initials(rep.tecnico)}</div><span class="name">${rep.tecnico}</span>`:`<div class="avatar" style="background:var(--teams)">T</div><span class="name" style="color:var(--muted)">Teams</span>`;
+        return `<div class="act teams"><div class="pick"></div><div class="stripe" style="background:${tcol}"></div>${tc}<div class="who">${who}</div><div class="body"><div class="subj">${escapeHtml(rep.asunto)}</div><div class="meta"><span class="teams-pill">Teams</span>${rep.organizador?`<span class="cats">${escapeHtml(rep.organizador)}</span>`:""}${cross?`<span class="span-tag">termina ${fmtShort(rep.fechaFin)}</span>`:""}</div></div><div class="row-actions"></div></div>`;
       }
       const timeCell=`<div class="time">${rep.ini}<small>${cross?`<span class="nextday">${rep.fin} · ${fmtShort(rep.fechaFin)}</span>`:rep.fin}</small></div>`;
       let whoCell;
@@ -745,7 +746,8 @@ function normalizeTeams(raw){
     const asunto=e.asunto||e.subject||e.Asunto||"(sin título)";
     const ini=splitDT(e.inicio||e.start||e.Inicio); const fin=splitDT(e.fin||e.end||e.Fin);
     let org=e.organizador||e.organizer||""; if(org&&typeof org==="object") org=(org.emailAddress&&(org.emailAddress.name||org.emailAddress.address))||org.name||org.address||"";
-    return { id:"tm-"+i, source:"teams", tecnico:null, asunto, descripcion:"", organizador:String(org||""), fechaIni:ini.date, ini:ini.hm, fechaFin:(fin.date||ini.date), fin:fin.hm };
+    let tecnico=null; const mt=String(asunto).match(/-\s*([A-Za-zÁÉÍÓÚáéíóúÑñ]+)\s*$/); if(mt){ const cand=mt[1]; const hit=TECHS.find(t=>t.toLowerCase()===cand.toLowerCase()); if(hit) tecnico=hit; }
+    return { id:"tm-"+i, source:"teams", tecnico, asunto, descripcion:"", organizador:String(org||""), fechaIni:ini.date, ini:ini.hm, fechaFin:(fin.date||ini.date), fin:fin.hm };
   }).filter(x=>x.fechaIni);
 }
 async function loadTeamsEvents(manual){
