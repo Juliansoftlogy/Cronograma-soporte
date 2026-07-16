@@ -531,7 +531,7 @@ function fmtAmPm(hm){ let [h,m]=(hm||"0:0").split(":").map(Number); const ap=h<1
 function changeMonth(d){ let [y,m]=monthCursor.split("-").map(Number); m+=d; if(m<1){m=12;y--;} if(m>12){m=1;y++;} monthCursor=`${y}-${String(m).padStart(2,"0")}`; renderSchedule(); }
 function renderMonth(list){
   const byDay={}; list.forEach(a=>(byDay[a.fechaIni]=byDay[a.fechaIni]||[]).push(a));
-  if(!monthCursor){ const first=Object.keys(byDay).sort()[0]||todayStr(); monthCursor=first.slice(0,7); }
+  if(!monthCursor){ monthCursor=todayStr().slice(0,7); }
   const [y,m]=monthCursor.split("-").map(Number);
   const firstDay=new Date(y,m-1,1); const startDow=firstDay.getDay();
   const gridStart=new Date(y,m-1,1-startDow);
@@ -572,7 +572,7 @@ let weekCursor=null;
 function mondayOf(dateStr){ const d=new Date(dateStr+"T00:00:00"); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
 function changeWeek(delta){ const d=new Date((weekCursor||mondayOf(todayStr()))+"T00:00:00"); d.setDate(d.getDate()+delta*7); weekCursor=`${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; renderSchedule(); }
 function renderWeek(list){
-  if(!weekCursor){ const ds=[...new Set(list.map(a=>a.fechaIni))].sort(); weekCursor=mondayOf(ds[0]||todayStr()); }
+  if(!weekCursor){ weekCursor=mondayOf(todayStr()); }
   const dates=[]; { const base=new Date(weekCursor+"T00:00:00"); for(let i=0;i<7;i++){ const d=new Date(base); d.setDate(base.getDate()+i); dates.push(`${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`); } }
   const wk=list.filter(a=>dates.includes(a.fechaIni));
   let minH=24,maxH=0;
