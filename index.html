@@ -138,6 +138,9 @@
   .state-pill.st-pend{background:#fef3c7;color:#92400e;border-color:#fde68a}
   .state-pill.st-part{background:#ede9fe;color:#5b21b6;border-color:#ddd6fe}
   .state-pill:hover{filter:brightness(.96)}
+  .act.conflict{box-shadow:inset 4px 0 0 var(--err)}
+  .conflict-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:5px;font-size:9.5px;font-weight:700;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca}
+  .conf-count{color:var(--err);font-weight:700}
   .teams-toggle{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}
   .teams-toggle input{width:15px;height:15px;accent-color:var(--teams);cursor:pointer}
   .teams-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:5px;background:var(--teams);color:#fff;font-size:9.5px;font-weight:700}
@@ -472,11 +475,36 @@ function submitModal(){
   }
   if(created.length===0) return toast("No se generó ninguna fila","err");
   activities.push(...created); saveState(); refresh(); closeModal();
+  { const cf=computeConflicts(); if(created.some(c=>cf.has(c.id))) toast("⚠ Choque de horario: un técnico queda con dos eventos a la vez","err"); }
   toast(`${created.length} fila${created.length>1?"s":""} agregada${created.length>1?"s":""}`,"ok");
 }
 
 /* ---- Filtros + render ---- */
-function combined(){ const loc=activities.map(a=>({...a,source:"local"})); const tm=showTeams?teamsEvents.map(e=>({...e,source:"teams"})):[]; return [...loc,...tm]; }
+let conflictSet=new Set();
+function computeConflicts(){
+  const set=new Set();
+  const evs=combined().filter(a=>a.tecnico);
+  const byTF={};
+  evs.forEach(a=>{ const k=a.tecnico+"|"+a.fechaIni; (byTF[k]=byTF[k]||[]).push(a); });
+  Object.values(byTF).forEach(list=>{
+    for(let i=0;i<list.length;i++) for(let j=i+1;j<list.length;j++){
+      const A=list[i],B=list[j];
+      const twin=(A.source!==B.source)&&(A.ini===B.ini)&&(A.fin===B.fin)&&(String(A.asunto).includes(B.asunto)||String(B.asunto).includes(A.asunto));
+      if(twin) continue;
+      const aS=toMin(A.ini), aE=(A.fechaFin!==A.fechaIni?toMin(A.fin)+1440:toMin(A.fin));
+      const bS=toMin(B.ini), bE=(B.fechaFin!==B.fechaIni?toMin(B.fin)+1440:toMin(B.fin));
+      if(aS<bE && bS<aE){ set.add(A.id); set.add(B.id); }
+    }
+  });
+  return set;
+}
+function sameEvent(a,b){ return a.tecnico&&b.tecnico&&a.tecnico===b.tecnico&&a.fechaIni===b.fechaIni&&a.ini===b.ini&&a.fin===b.fin&&(String(a.asunto).includes(b.asunto)||String(b.asunto).includes(a.asunto)); }
+function combined(){
+  const tm=showTeams?teamsEvents.map(e=>({...e,source:"teams"})):[];
+  let loc=activities.map(a=>({...a,source:"local"}));
+  if(tm.length) loc=loc.filter(l=>!tm.some(t=>sameEvent(t,l)));
+  return [...loc,...tm];
+}
 function getFiltered(){
   const q=(document.getElementById("filterText").value||"").toLowerCase();
   const ft=document.getElementById("filterTech").value, fd=document.getElementById("filterDate").value;
@@ -490,7 +518,9 @@ function getFiltered(){
 function setView(v){ currentView=v; document.getElementById("viewAgenda").classList.toggle("active",v==="agenda"); document.getElementById("viewWeek").classList.toggle("active",v==="semana"); document.getElementById("viewMonth").classList.toggle("active",v==="mes"); renderSchedule(); }
 function renderSchedule(){
   const filtered=getFiltered();
-  document.getElementById("filterCount").textContent=`${filtered.length} visibles`;
+  conflictSet=computeConflicts();
+  const nConf=conflictSet.size;
+  document.getElementById("filterCount").innerHTML=`${filtered.length} visibles${nConf>0?` · <span class="conf-count">⚠ ${nConf} en conflicto</span>`:""}`;
   const board=document.getElementById("board");
   if(!filtered.length && currentView!=="mes"){ board.innerHTML=`<div class="empty"><div>Sin actividades que mostrar.</div><div class="hint">Agrega actividades con los botones de la izquierda.</div></div>`; return; }
   const bulk=currentView==="agenda"?`<div class="bulkbar"><span class="lbl">Enviar:</span><a onclick="pickAll(true)">Marcar todo</a><a onclick="pickAll(false)">Desmarcar todo</a><span class="count" id="pickInfo"></span></div>`:"";
@@ -513,7 +543,7 @@ function renderAgenda(list){
         const tc=`<div class="time">${rep.ini}<small>${cross?`<span class="nextday">${rep.fin} · ${fmtShort(rep.fechaFin)}</span>`:rep.fin}</small></div>`;
         const tcol=rep.tecnico?((TEAM[rep.tecnico]&&TEAM[rep.tecnico].color)||"var(--teams)"):"var(--teams)";
         const who=rep.tecnico?`<div class="avatar" style="background:${tcol}">${initials(rep.tecnico)}</div><span class="name">${rep.tecnico}</span>`:`<div class="avatar" style="background:var(--teams)">T</div><span class="name" style="color:var(--muted)">Teams</span>`;
-        return `<div class="act teams"><div class="pick"></div><div class="stripe" style="background:${tcol}"></div>${tc}<div class="who">${who}</div><div class="body"><div class="subj">${escapeHtml(rep.asunto)}</div><div class="meta"><span class="teams-pill">Teams</span>${rep.organizador?`<span class="cats">${escapeHtml(rep.organizador)}</span>`:""}${cross?`<span class="span-tag">termina ${fmtShort(rep.fechaFin)}</span>`:""}</div></div><div class="row-actions"></div></div>`;
+        const cf=conflictSet.has(rep.id); return `<div class="act teams ${cf?"conflict":""}"><div class="pick"></div><div class="stripe" style="background:${tcol}"></div>${tc}<div class="who">${who}</div><div class="body"><div class="subj">${escapeHtml(rep.asunto)}</div><div class="meta"><span class="teams-pill">Teams</span>${cf?`<span class="conflict-pill">⚠ Choque</span>`:""}${rep.organizador?`<span class="cats">${escapeHtml(rep.organizador)}</span>`:""}${cross?`<span class="span-tag">termina ${fmtShort(rep.fechaFin)}</span>`:""}</div></div><div class="row-actions"></div></div>`;
       }
       const timeCell=`<div class="time">${rep.ini}<small>${cross?`<span class="nextday">${rep.fin} · ${fmtShort(rep.fechaFin)}</span>`:rep.fin}</small></div>`;
       let whoCell;
@@ -527,7 +557,7 @@ function renderAgenda(list){
       const planPill=`<span class="plan-pill ${(rep.plannerV||"Si")==="Si"?"yes":"no"}" title="Clic para cambiar" onclick="togglePlannerGroup('${rep.id}')">${(rep.plannerV||"Si")==="Si"?"Planner":"sin Planner"}</span>`;
       const stripeColor=mem.length===1?((TEAM[rep.tecnico]&&TEAM[rep.tecnico].color)||"#888"):"var(--teams)";
       const actions=`<button class="icon-btn" onclick="${isGroup?`openEditGroup('${rep.id}')`:`openEdit('${rep.id}')`}" title="Editar">Editar</button><button class="icon-btn del" onclick="${isGroup?`delGroup('${rep.id}')`:`delRow('${rep.id}')`}" title="Eliminar">Eliminar</button>`;
-      return `<div class="act"><div class="pick">${pick}</div><div class="stripe" style="background:${stripeColor}"></div>${timeCell}<div class="who">${whoCell}</div><div class="body"><div class="subj">${escapeHtml(rep.asunto)}</div>${rep.descripcion&&rep.descripcion!==rep.asunto?`<div class="desc">${escapeHtml(rep.descripcion)}</div>`:""}${partsChips}<div class="meta">${planPill}${cross?`<span class="span-tag">termina ${fmtShort(rep.fechaFin)}</span>`:""}${statePill}</div></div><div class="row-actions">${actions}</div></div>`;
+      const cf=mem.some(x=>conflictSet.has(x.id)); return `<div class="act ${cf?"conflict":""}"><div class="pick">${pick}</div><div class="stripe" style="background:${stripeColor}"></div>${timeCell}<div class="who">${whoCell}</div><div class="body"><div class="subj">${escapeHtml(rep.asunto)}</div>${rep.descripcion&&rep.descripcion!==rep.asunto?`<div class="desc">${escapeHtml(rep.descripcion)}</div>`:""}${partsChips}<div class="meta">${cf?`<span class="conflict-pill">⚠ Choque</span>`:""}${planPill}${cross?`<span class="span-tag">termina ${fmtShort(rep.fechaFin)}</span>`:""}${statePill}</div></div><div class="row-actions">${actions}</div></div>`;
     }).join("");
     return `<div class="day"><div class="day-h ${fecha===today?'today':''}"><span class="dow">${dow}</span><span class="date">${date}</span><span class="badge">${order.length} evento${order.length>1?"s":""}</span></div>${rows}</div>`;
   }).join("");
@@ -561,7 +591,7 @@ function renderMonth(list){
   html+=`</div><div class="month-hint">Haz clic en cualquier día para ver todos sus eventos.</div>`; return html;
 }
 function openDay(ds){
-  const src=[...activities,...(showTeams?teamsEvents:[])]; const evs=src.filter(a=>a.fechaIni===ds).slice().sort((a,b)=>toMin(a.ini)-toMin(b.ini));
+  const src=combined(); const evs=src.filter(a=>a.fechaIni===ds).slice().sort((a,b)=>toMin(a.ini)-toMin(b.ini));
   const {dow,date}=fmtDayLong(ds);
   document.getElementById("dayTitle").textContent=`${dow} ${date} · ${evs.length} evento${evs.length!==1?"s":""}`;
   const body=document.getElementById("dayBody");
@@ -630,6 +660,7 @@ async function sendToFlow(resendAll, auto){
   const picked = activities.filter(a=>a.pick!==false);
   const pend = resendAll ? picked : picked.filter(a=>!a.sent);
   if(!pend.length){ if(!auto) toast("No hay actividades seleccionadas para enviar.","ok"); return; }
+  if(!auto){ const cf=computeConflicts(); if(pend.some(a=>cf.has(a.id))) toast("⚠ Ojo: hay choques de horario en lo que vas a enviar","err"); }
   const iso=(d,hm)=>`${d}T${hm}:00`;
   const payload={ actividades: pend.map(a=>{ const t=TEAM[a.tecnico]||{}; return {
     Asunto:`${a.tecnico} - ${a.asunto}`, CorreoAsignado:t.correo||"", Plan:t.plan||"", Deposito:t.deposito||"",
@@ -747,12 +778,23 @@ function verifyFlowData(){
 }
 function pad2(n){ return String(n).padStart(2,"0"); }
 function splitDT(v){ let str=(v&&typeof v==="object")?(v.dateTime||v.DateTime||""):(v||""); str=String(str).trim(); if(!str) return {date:"",hm:"00:00"}; str=str.replace(" ","T"); return {date:str.slice(0,10), hm:str.length>=16?str.slice(11,16):"00:00"}; }
+function splitDTco(v){
+  let str=(v&&typeof v==="object")?(v.dateTime||v.DateTime||""):(v||"");
+  str=String(str).trim(); if(!str) return {date:"",hm:"00:00"};
+  str=str.replace(" ","T");
+  let iso=str;
+  if(!/[Zz]$|[+\-]\d\d:?\d\d$/.test(iso)) iso=iso.replace(/\.\d+$/,"")+"Z";
+  const d=new Date(iso);
+  if(isNaN(d.getTime())) return {date:str.slice(0,10), hm:str.length>=16?str.slice(11,16):"00:00"};
+  d.setUTCHours(d.getUTCHours()-5);
+  return { date:`${d.getUTCFullYear()}-${pad2(d.getUTCMonth()+1)}-${pad2(d.getUTCDate())}`, hm:`${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}` };
+}
 function normalizeTeams(raw){
   return (Array.isArray(raw)?raw:[]).map((e,i)=>{
     const asunto=e.asunto||e.subject||e.Asunto||"(sin título)";
-    const ini=splitDT(e.inicio||e.start||e.Inicio); const fin=splitDT(e.fin||e.end||e.Fin);
+    const ini=splitDTco(e.inicio||e.start||e.Inicio); const fin=splitDTco(e.fin||e.end||e.Fin);
     let org=e.organizador||e.organizer||""; if(org&&typeof org==="object") org=(org.emailAddress&&(org.emailAddress.name||org.emailAddress.address))||org.name||org.address||"";
-    let tecnico=null; const mt=String(asunto).match(/-\s*([A-Za-zÁÉÍÓÚáéíóúÑñ]+)\s*$/); if(mt){ const cand=mt[1]; const hit=TECHS.find(t=>t.toLowerCase()===cand.toLowerCase()); if(hit) tecnico=hit; }
+    let tecnico=null; let mt=String(asunto).match(/^([A-Za-zÁÉÍÓÚáéíóúÑñ]+)\s*-/); if(mt){ const hit=TECHS.find(t=>t.toLowerCase()===mt[1].toLowerCase()); if(hit) tecnico=hit; } if(!tecnico){ mt=String(asunto).match(/-\s*([A-Za-zÁÉÍÓÚáéíóúÑñ]+)\s*$/); if(mt){ const hit=TECHS.find(t=>t.toLowerCase()===mt[1].toLowerCase()); if(hit) tecnico=hit; } }
     return { id:"tm-"+i, source:"teams", tecnico, asunto, descripcion:"", organizador:String(org||""), fechaIni:ini.date, ini:ini.hm, fechaFin:(fin.date||ini.date), fin:fin.hm };
   }).filter(x=>x.fechaIni);
 }
