@@ -826,16 +826,38 @@ async function loadTeamsEvents(manual){
 }
 function toggleTeams(v){ showTeams=v; refresh(); }
 function setTeamsFlowUrl(){ const v=prompt("Pega la URL HTTP del Flujo 2 (el disparador 'Cuando se recibe una solicitud HTTP' del flujo que LEE los eventos de Teams):", teamsFlowUrl||""); if(v!==null){ teamsFlowUrl=v.trim(); try{localStorage.setItem(TEAMS_FLOWURL_KEY,teamsFlowUrl);}catch(e){} toast(teamsFlowUrl?"URL de actualización guardada":"URL borrada","ok"); } }
+async function fetchTeamsRaw(){
+  const bust=TEAMS_JSON_URL+(TEAMS_JSON_URL.includes("?")?"&":"?")+"t="+Date.now();
+  const res=await fetch(bust,{cache:"no-store"});
+  if(!res.ok) throw new Error("HTTP "+res.status);
+  return await res.text();
+}
 async function refreshTeamsViaFlow(){
   if(!teamsFlowUrl){ setTeamsFlowUrl(); if(!teamsFlowUrl) return; }
   const link=document.getElementById("teamsRefreshLink"); if(link) link.textContent="Actualizando…";
+  // 1) foto del archivo ANTES de disparar (para detectar cuándo cambia)
+  let beforeText=""; try{ beforeText=await fetchTeamsRaw(); }catch(e){ beforeText=""; }
+  // 2) disparar el Flujo 2 (que relee Teams y reescribe el eventos.json)
   try{
     await fetch(teamsFlowUrl,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:"{}"});
   }catch(e){ if(link) link.textContent="Actualizar"; return toast("No se pudo solicitar la actualización: "+(e.message||e),"err"); }
-  toast("Solicitud enviada. Esperando a que el flujo publique los eventos…","");
-  let tries=0;
-  const poll=async()=>{ tries++; await loadTeamsEvents(false); if(tries>=5){ if(link) link.textContent="Actualizar"; toast(`Eventos de Teams actualizados (${teamsEvents.length})`,"ok"); return; } setTimeout(poll,3000); };
-  setTimeout(poll,3000);
+  toast("Solicitud enviada. Esperando los cambios de Teams…","");
+  // 3) vigilar el archivo hasta que CAMBIE (o hasta agotar el tiempo)
+  const startedAt=Date.now(), MAX_MS=60000, STEP_MS=3000;
+  const tick=async()=>{
+    let text=""; try{ text=await fetchTeamsRaw(); }catch(e){}
+    if(text && text!==beforeText){
+      try{ teamsEvents=normalizeTeams(JSON.parse(text)); }catch(e){ teamsEvents=[]; }
+      refresh(); if(link) link.textContent="Actualizar";
+      toast(`Eventos de Teams actualizados (${teamsEvents.length})`,"ok"); return;
+    }
+    if(Date.now()-startedAt>=MAX_MS){
+      await loadTeamsEvents(false); if(link) link.textContent="Actualizar";
+      toast("Aún no se reflejan los cambios. Pulsa 'Actualizar' de nuevo en unos segundos.",""); return;
+    }
+    setTimeout(tick, STEP_MS);
+  };
+  setTimeout(tick, STEP_MS);
 }
 /* ---- Init ---- */
 loadState();
