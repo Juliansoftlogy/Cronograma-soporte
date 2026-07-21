@@ -228,7 +228,6 @@
         </div>
         <label class="teams-toggle"><input type="checkbox" id="teamsToggle" checked onchange="toggleTeams(this.checked)"> Eventos de Teams</label>
         <a href="#" id="teamsRefreshLink" onclick="refreshTeamsViaFlow();return false" title="Solicitar actualización al flujo que lee Teams" style="font-size:11.5px;color:var(--brand);font-weight:600">Actualizar</a>
-        <button class="gear" title="Configurar URL del flujo de actualización de Teams" onclick="setTeamsFlowUrl()" style="margin-left:6px">⚙</button>
       </div>
       <div class="board" id="board"></div>
     </main>
@@ -265,7 +264,7 @@ let teamsEvents = [], showTeams = true;
 const FLOW_URL = "https://defaulta40856b5235f4600a3d45cce33adbf.ef.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/17/workflows/f8b7d462fb4449419db2938dd47a365f/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=5uQI1tsLCUrrKY2CTjbLksVgppXAaDQKTHWWMc-4mSE";
 let flowUrl = FLOW_URL;
 const TEAMS_FLOWURL_KEY = "softlogy_teams_flow_url";
-const TEAMS_FLOW_URL = ""; // URL del disparador HTTP del Flujo 2 (lee Teams). Se configura con el engranaje.
+const TEAMS_FLOW_URL = "https://defaulta40856b5235f4600a3d45cce33adbf.ef.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/28/workflows/0d07c2f50c4744dd973c8a78100a35a6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=82TEmD4dDs4Lv5b98JYosuqAsw9IQT7H8OpZojd0Wuk"; // URL del disparador HTTP del Flujo 2 (lee Teams).
 let teamsFlowUrl = TEAMS_FLOW_URL;
 try{ const _f=localStorage.getItem(FLOWURL_KEY); if(_f) flowUrl=_f; const _t=localStorage.getItem(TEAMS_FLOWURL_KEY); if(_t) teamsFlowUrl=_t; }catch(e){}
 
