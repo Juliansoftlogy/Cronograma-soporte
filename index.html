@@ -843,7 +843,7 @@ async function refreshTeamsViaFlow(){
   }catch(e){ if(link) link.textContent="Actualizar"; return toast("No se pudo solicitar la actualización: "+(e.message||e),"err"); }
   toast("Solicitud enviada. Esperando los cambios de Teams…","");
   // 3) vigilar el archivo hasta que CAMBIE (o hasta agotar el tiempo)
-  const startedAt=Date.now(), MAX_MS=60000, STEP_MS=3000;
+  const startedAt=Date.now(), MAX_MS=60000, STEP_MS=1500;
   const tick=async()=>{
     let text=""; try{ text=await fetchTeamsRaw(); }catch(e){}
     if(text && text!==beforeText){
