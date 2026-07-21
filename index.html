@@ -227,16 +227,17 @@
           <span class="filter-count" id="filterCount"></span>
         </div>
         <label class="teams-toggle"><input type="checkbox" id="teamsToggle" checked onchange="toggleTeams(this.checked)"> Eventos de Teams</label>
-        <a href="#" onclick="loadTeamsEvents(true);return false" title="Actualizar desde Teams" style="font-size:11.5px;color:var(--brand);font-weight:600">Actualizar</a>
+        <a href="#" id="teamsRefreshLink" onclick="refreshTeamsViaFlow();return false" title="Solicitar actualización al flujo que lee Teams" style="font-size:11.5px;color:var(--brand);font-weight:600">Actualizar</a>
+        <button class="gear" title="Configurar URL del flujo de actualización de Teams" onclick="setTeamsFlowUrl()" style="margin-left:6px">⚙</button>
       </div>
       <div class="board" id="board"></div>
     </main>
   </div>
 </div>
-<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
-  <div class="modal"><div class="modal-header"><h3 id="modalTitle">Nueva actividad</h3><button class="close-x" onclick="closeModal()">×</button></div>
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModalKeep()">
+  <div class="modal"><div class="modal-header"><h3 id="modalTitle">Nueva actividad</h3><button class="close-x" onclick="closeModalDiscard()">×</button></div>
   <div class="modal-body" id="modalBody"></div>
-  <div class="modal-footer"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn primary" id="modalSubmitBtn" onclick="modalSave()">Agregar</button></div></div>
+  <div class="modal-footer"><button class="btn ghost" onclick="closeModalDiscard()">Cancelar</button><button class="btn primary" id="modalSubmitBtn" onclick="modalSave()">Agregar</button></div></div>
 </div>
 <div class="modal-overlay" id="dayOverlay" onclick="if(event.target===this)closeDayModal()">
   <div class="modal"><div class="modal-header"><h3 id="dayTitle"></h3><button class="close-x" onclick="closeDayModal()">×</button></div>
@@ -263,6 +264,10 @@ const TEAMS_JSON_URL = "https://raw.githubusercontent.com/Juliansoftlogy/Cronogr
 let teamsEvents = [], showTeams = true;
 const FLOW_URL = "https://defaulta40856b5235f4600a3d45cce33adbf.ef.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/17/workflows/f8b7d462fb4449419db2938dd47a365f/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=5uQI1tsLCUrrKY2CTjbLksVgppXAaDQKTHWWMc-4mSE";
 let flowUrl = FLOW_URL;
+const TEAMS_FLOWURL_KEY = "softlogy_teams_flow_url";
+const TEAMS_FLOW_URL = ""; // URL del disparador HTTP del Flujo 2 (lee Teams). Se configura con el engranaje.
+let teamsFlowUrl = TEAMS_FLOW_URL;
+try{ const _f=localStorage.getItem(FLOWURL_KEY); if(_f) flowUrl=_f; const _t=localStorage.getItem(TEAMS_FLOWURL_KEY); if(_t) teamsFlowUrl=_t; }catch(e){}
 
 function saveState(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(activities)); }catch(e){} }
 function loadState(){
@@ -291,9 +296,17 @@ function openModal(kind){
   const titles = { individual:"Actividad individual", grupal:"Actividad grupal (varios técnicos, misma actividad y horario)", recurrente:"Actividad recurrente (misma actividad en varios días)", nocturno:"Actividad nocturna (SBX / Vento / Archies)", rollout:"Rollout / Multi-punto (varias tiendas o PDVs)", rutinas:"Rutinas matutinas" };
   document.getElementById("modalTitle").textContent = titles[kind] || "Nueva actividad";
   document.getElementById("modalBody").innerHTML = buildModalBody(kind);
+  { const dr=loadDrafts(); if(dr[kind]) restoreModalDraft(dr[kind]); }
   document.getElementById("modalOverlay").classList.add("open");
 }
 function closeModal(){ document.getElementById("modalOverlay").classList.remove("open"); currentModal = null; editingId = null; editingGroupRep = null; }
+const DRAFTS_KEY="softlogy_drafts_v1";
+function loadDrafts(){ try{ return JSON.parse(localStorage.getItem(DRAFTS_KEY)||"{}"); }catch(e){ return {}; } }
+function saveDrafts(o){ try{ localStorage.setItem(DRAFTS_KEY, JSON.stringify(o)); }catch(e){} }
+function captureModalDraft(){ const body=document.getElementById("modalBody"); const d={ single:{}, multi:{} }; body.querySelectorAll("[name]").forEach(el=>{ if(el.type==="checkbox"||el.type==="radio"){ if(!d.multi[el.name]) d.multi[el.name]=[]; if(el.checked) d.multi[el.name].push(el.value); } else { d.single[el.name]=el.value; } }); return d; }
+function restoreModalDraft(d){ if(!d) return; const body=document.getElementById("modalBody"); Object.entries(d.single||{}).forEach(([n,v])=>{ const el=body.querySelector('[name="'+n+'"]'); if(el && el.type!=="checkbox" && el.type!=="radio") el.value=v; }); Object.entries(d.multi||{}).forEach(([n,arr])=>{ body.querySelectorAll('[name="'+n+'"]').forEach(el=>{ if(el.type==="checkbox"||el.type==="radio"){ el.checked=arr.includes(el.value); const lab=el.closest(".tech-chip"); if(lab) lab.classList.toggle("checked", el.checked); } }); }); }
+function closeModalKeep(){ if(currentModal && !editingId && !editingGroupRep){ const dr=loadDrafts(); dr[currentModal]=captureModalDraft(); saveDrafts(dr); } document.getElementById("modalOverlay").classList.remove("open"); currentModal=null; editingId=null; editingGroupRep=null; }
+function closeModalDiscard(){ if(currentModal && !editingId && !editingGroupRep){ const dr=loadDrafts(); delete dr[currentModal]; saveDrafts(dr); } document.getElementById("modalOverlay").classList.remove("open"); currentModal=null; editingId=null; editingGroupRep=null; }
 function techChips(name, sel=[]){ return `<div class="tech-checkboxes">${TECHS.map(t => `<label class="tech-chip ${sel.includes(t)?'checked':''}"><input type="checkbox" name="${name}" value="${t}" ${sel.includes(t)?'checked':''} onchange="this.parentElement.classList.toggle('checked', this.checked)">${t}</label>`).join('')}</div>`; }
 function techSelect(name, s=""){ return `<select name="${name}">${TECHS.map(t => `<option value="${t}" ${s===t?'selected':''}>${t}</option>`).join('')}</select>`; }
 function plannerSelect(sel="Si"){ return `<select name="planner"><option value="Si" ${sel==="Si"?"selected":""}>Sí — crea tarea en Planner</option><option value="No" ${sel==="No"?"selected":""}>No — solo evento</option></select>`; }
@@ -348,6 +361,7 @@ function buildModalBody(kind){
 }
 function modalSave(){ if(editingGroupRep) saveEditGroup(); else if(editingId) saveEdit(); else submitModal(); }
 function buildEditBody(a){
+  const extras=(a.categorias||[]).filter(x=>x!==a.tecnico);
   const aviso = a.sent ? `<div class="info-box" style="background:#fef3c7;border-color:#fde68a;color:#92400e">Esta actividad ya figura como <b>Enviada</b>. Al guardar cambios volverá a <b>Pendiente</b> para reenviarla. Ojo: el flujo <b>crea</b> el evento (no lo edita), así que reenviar puede duplicarlo en Teams.</div>` : "";
   return aviso + `<div class="form-grid">
     <div><label>Técnico</label>${techSelect("tecnico", a.tecnico)}</div>
@@ -355,6 +369,7 @@ function buildEditBody(a){
     <div style="grid-column:1/-1"><label>Fin (fecha · hora)</label><div class="field-datetime"><input type="date" name="fecha_fin" value="${a.fechaFin}"><input type="time" name="fin" value="${a.fin}"></div></div>
     <div style="grid-column:1/-1"><label>Asunto (sin nombre técnico, se agrega solo)</label><input type="text" name="asunto" value="${escapeAttr(a.asunto)}"></div>
     <div style="grid-column:1/-1"><label>Descripción</label><textarea name="descripcion">${escapeHtml(a.descripcion||"")}</textarea></div>
+    <div style="grid-column:1/-1"><label>Categorías (otros técnicos que participan; el responsable ya va incluido)</label>${techChips("categorias_extra", extras)}</div>
     <div style="grid-column:1/-1"><label>¿Va a Planner?</label>${plannerSelect(a.plannerV||"Si")}</div>
   </div>`;
 }
@@ -378,7 +393,8 @@ function saveEdit(){
   const wasSent=a.sent;
   a.tecnico=tec; a.fechaIni=fechaIni; a.ini=ini; a.fechaFin=fechaFin; a.fin=fin;
   a.asunto=asunto; a.descripcion=descripcion; a.plannerV=plannerV;
-  if(!a.categorias||!a.categorias.length) a.categorias=[tec]; else if(!a.categorias.includes(tec)) a.categorias=[tec,...a.categorias];
+  const extra=Array.from(body.querySelectorAll('[name="categorias_extra"]:checked')).map(x=>x.value);
+  a.categorias=[tec,...extra.filter(x=>x!==tec)];
   a.sent=false; // cambió: vuelve a pendiente
   saveState(); refresh(); closeModal();
   toast(wasSent?"Cambios guardados. Quedó Pendiente para reenviar.":"Cambios guardados","ok");
@@ -474,7 +490,7 @@ function submitModal(){
     eachDate(fInit,fEnd).filter(d=>!isWeekend(new Date(d+"T00:00:00"))).forEach(dt=>techs.forEach(t=>{ if(!rutMap[t]) return; created.push({id:uid(),fechaIni:dt,ini:"07:00",fechaFin:dt,fin:"07:30",tecnico:t,asunto:`Rutina AM ${rutMap[t]} ${fmtShort(dt)}`,descripcion:`${rutMap[t]}. Entregable: reporte WhatsApp Soporte FE antes de las 08:00.`,categorias:[t],plannerV}); }));
   }
   if(created.length===0) return toast("No se generó ninguna fila","err");
-  activities.push(...created); saveState(); refresh(); closeModal();
+  activities.push(...created); saveState(); refresh(); { const _d=loadDrafts(); delete _d[kind]; saveDrafts(_d); } closeModal();
   { const cf=computeConflicts(); if(created.some(c=>cf.has(c.id))) toast("⚠ Choque de horario: un técnico queda con dos eventos a la vez","err"); }
   toast(`${created.length} fila${created.length>1?"s":""} agregada${created.length>1?"s":""}`,"ok");
 }
@@ -666,6 +682,7 @@ async function sendToFlow(resendAll, auto){
     Asunto:`${a.tecnico} - ${a.asunto}`, CorreoAsignado:t.correo||"", Plan:t.plan||"", Deposito:t.deposito||"",
     FechaInicio:iso(a.fechaIni,a.ini), FechaFin:iso(a.fechaFin,a.fin), Responsable:a.tecnico,
     Descripcion:a.descripcion||"", Categorias:(a.categorias||[]).join(", "), PlannerVerificacion:(a.plannerV||"Si"),
+    AsistentesOpcionales:(a.categorias||[]).filter(n=>n!==a.tecnico).map(n=>(TEAM[n]&&TEAM[n].correo)||"").filter(Boolean).join("; "),
     FechaEntregablePlanner:iso(a.fechaFin,a.fin) }; }) };
   try{
     await fetch(flowUrl,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify(payload)});
@@ -809,6 +826,18 @@ async function loadTeamsEvents(manual){
   }catch(e){ teamsEvents=[]; if(manual) toast("No se pudo leer el calendario de Teams: "+(e.message||e),"err"); refresh(); }
 }
 function toggleTeams(v){ showTeams=v; refresh(); }
+function setTeamsFlowUrl(){ const v=prompt("Pega la URL HTTP del Flujo 2 (el disparador 'Cuando se recibe una solicitud HTTP' del flujo que LEE los eventos de Teams):", teamsFlowUrl||""); if(v!==null){ teamsFlowUrl=v.trim(); try{localStorage.setItem(TEAMS_FLOWURL_KEY,teamsFlowUrl);}catch(e){} toast(teamsFlowUrl?"URL de actualización guardada":"URL borrada","ok"); } }
+async function refreshTeamsViaFlow(){
+  if(!teamsFlowUrl){ toast("Primero configura la URL del flujo (engranaje ⚙).","err"); setTeamsFlowUrl(); if(!teamsFlowUrl) return; }
+  const link=document.getElementById("teamsRefreshLink"); if(link) link.textContent="Actualizando…";
+  try{
+    await fetch(teamsFlowUrl,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:"{}"});
+  }catch(e){ if(link) link.textContent="Actualizar"; return toast("No se pudo solicitar la actualización: "+(e.message||e),"err"); }
+  toast("Solicitud enviada. Esperando a que el flujo publique los eventos…","");
+  let tries=0;
+  const poll=async()=>{ tries++; await loadTeamsEvents(false); if(tries>=5){ if(link) link.textContent="Actualizar"; toast(`Eventos de Teams actualizados (${teamsEvents.length})`,"ok"); return; } setTimeout(poll,3000); };
+  setTimeout(poll,3000);
+}
 /* ---- Init ---- */
 loadState();
 refresh();
