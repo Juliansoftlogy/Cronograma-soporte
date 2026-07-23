@@ -203,7 +203,7 @@
           <button class="add-btn" onclick="openModal('grupal')">Grupal<span class="cap">Varios técnicos</span></button>
           <button class="add-btn" onclick="openModal('recurrente')">Recurrente<span class="cap">Varios días</span></button>
           <button class="add-btn" onclick="openModal('nocturno')">Nocturno<span class="cap">SBX / Vento</span></button>
-          <button class="add-btn" onclick="openModal('rollout')">Rollout<span class="cap">Multi-punto</span></button>
+          <button class="add-btn" onclick="openModal('rollout')">Rollout<span class="cap">Fechas por punto</span></button>
           <button class="add-btn" onclick="openModal('rutinas')">Rutinas AM<span class="cap">07:00–07:30</span></button>
         </div></div>
       </div>
@@ -284,6 +284,8 @@ function autoFechaFin(fechaIni, ini, fin){ return toMin(fin) <= toMin(ini) ? add
 function eachDate(a, b){ const arr = [], cur = new Date(a + "T00:00:00"), end = new Date(b + "T00:00:00"); while (cur <= end){ arr.push(ymd(cur)); cur.setDate(cur.getDate()+1); } return arr; }
 function dowLunFirst(dateStr){ return (new Date(dateStr + "T00:00:00").getDay() + 6) % 7; }
 function isWeekend(d){ return d.getDay() === 0 || d.getDay() === 6; }
+function parseDMY(str){ const m=String(str).match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(!m) return null; let d=+m[1],mo=+m[2],y=+m[3]; if(y<100) y+=2000; if(mo<1||mo>12||d<1||d>31) return null; return `${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }
+function parseHora(str){ if(!str) return null; let t=String(str).trim().toLowerCase().replace(/\./g,"").replace(/\s+/g,""); const m=t.match(/^(\d{1,2})(?::(\d{2}))?(am|pm)?$/); if(!m) return null; let h=+m[1],min=m[2]?+m[2]:0,ap=m[3]; if(ap==="pm"&&h<12) h+=12; if(ap==="am"&&h===12) h=0; if(h>23||min>59) return null; return `${String(h).padStart(2,"0")}:${String(min).padStart(2,"0")}`; }
 function fmtDayLong(dateStr){ const d = new Date(dateStr + "T00:00:00"); return { dow: DOW_ES[d.getDay()], date: `${d.getDate()} de ${MONTH_ES[d.getMonth()]}` }; }
 function fmtShort(dateStr){ const d = new Date(dateStr + "T00:00:00"); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`; }
 function initials(name){ return name.slice(0,2).toUpperCase(); }
@@ -292,7 +294,7 @@ function absMin(baseDate, dateStr, hm){ const diffDays = Math.round((new Date(da
 function openModal(kind){
   currentModal = kind; editingId = null; editingGroupRep = null;
   const sb=document.getElementById("modalSubmitBtn"); if(sb) sb.textContent="Agregar";
-  const titles = { individual:"Actividad individual", grupal:"Actividad grupal (varios técnicos, misma actividad y horario)", recurrente:"Actividad recurrente (misma actividad en varios días)", nocturno:"Actividad nocturna (SBX / Vento / Archies)", rollout:"Rollout / Multi-punto (varias tiendas o PDVs)", rutinas:"Rutinas matutinas" };
+  const titles = { individual:"Actividad individual", grupal:"Actividad grupal (varios técnicos, misma actividad y horario)", recurrente:"Actividad recurrente (misma actividad en varios días)", nocturno:"Actividad nocturna (SBX / Vento / Archies)", rollout:"Rollout / Despliegue (una fecha por punto)", rutinas:"Rutinas matutinas" };
   document.getElementById("modalTitle").textContent = titles[kind] || "Nueva actividad";
   document.getElementById("modalBody").innerHTML = buildModalBody(kind);
   { const dr=loadDrafts(); if(dr[kind]) restoreModalDraft(dr[kind]); }
@@ -344,14 +346,13 @@ function buildModalBody(kind){
     <div style="grid-column:1/-1"><label>Asunto base (se le agrega el nombre de técnico)</label><input type="text" name="asunto" placeholder="Ej: Actualización SBX (2 puntos)"></div>
     <div style="grid-column:1/-1"><label>¿Va a Planner?</label>${plannerSelect()}</div>
     <div style="grid-column:1/-1"><label>Descripción</label><textarea name="descripcion"></textarea></div></div>`;
-  if (kind === "rollout") return `<div class="info-box">Para actualizaciones/instalaciones en varias tiendas/PDVs. Round-robin de técnicos y horarios por bloque; si un bloque pasa de medianoche, la fecha fin rueda sola.</div><div class="form-grid">
+  if (kind === "rollout") return `<div class="info-box">Despliegue en varias tiendas/PDVs. Cada línea es un punto con su propia fecha: escribe el nombre, la fecha (dd/mm/aaaa) y, si quieres, la hora (ej: 9am o 14:00). Si no pones hora en la línea, se usa la hora de inicio y los puntos del mismo día se acomodan uno tras otro por la duración. Los técnicos se reparten en orden (round-robin).</div><div class="form-grid">
     <div style="grid-column:1/-1"><label>Técnicos participantes (round-robin en orden)</label>${techChips("tecnicos")}</div>
-    <div><label>Fecha inicio</label><input type="date" name="fecha_ini" value="${today}"></div><div><label>Ptos por día</label><input type="number" name="ptos_por_dia" value="5" min="1"></div>
-    <div><label>Duración por punto (min)</label><input type="number" name="dur_min" value="60" min="5"></div><div><label>Hora inicio primer punto</label><input type="time" name="ini" value="09:00"></div>
-    <div style="grid-column:1/-1"><label>Lista de puntos/tiendas (uno por línea)</label><textarea name="puntos" rows="6" placeholder="Titan2&#10;Zona G&#10;Torre 95"></textarea></div>
-    <div style="grid-column:1/-1"><label>Prefijo del asunto</label><input type="text" name="asunto" placeholder="Ej: Actualización Starbucks"></div>
+    <div><label>Duración por punto (min)</label><input type="number" name="dur_min" value="60" min="5"></div><div><label>Hora de inicio (por defecto)</label><input type="time" name="ini" value="08:00"></div>
+    <div style="grid-column:1/-1"><label>Lista de puntos (uno por línea: Punto dd/mm/aaaa [hora opcional])</label><textarea name="puntos" rows="6" placeholder="TITAN PLAZA  28/07/2026&#10;PLAZA CENTRAL  28/07/2026  9am&#10;CHIA  30/07/2026  14:00"></textarea></div>
+    <div style="grid-column:1/-1"><label>Prefijo del asunto (opcional)</label><input type="text" name="asunto" placeholder="Ej: Despliegue"></div>
     <div style="grid-column:1/-1"><label>¿Va a Planner?</label>${plannerSelect()}</div>
-    <div style="grid-column:1/-1"><label>Plantilla de descripción (usa {punto})</label><textarea name="descripcion">Actualización — {punto}.</textarea></div></div>`;
+    <div style="grid-column:1/-1"><label>Plantilla de descripción (usa {punto})</label><textarea name="descripcion">Despliegue — {punto}.</textarea></div></div>`;
   if (kind === "rutinas") return `<div class="info-box">Rutinas AM fijas (07:00–07:30). Rotación por defecto: Anyely (BD), Jose (Barrido), Samuel (Facturas servidores propios), Jackson (Facturas Facturiza).</div><div class="form-grid">
     <div><label>Fecha inicio</label><input type="date" name="fecha_ini" value="${today}"></div><div><label>Fecha fin (inclusive)</label><input type="date" name="fecha_fin" value="${today}"></div>
     <div style="grid-column:1/-1"><label>Técnicos a incluir</label>${techChips("tecnicos",["Anyely","Jose","Samuel","Jackson"])}</div>
@@ -471,17 +472,24 @@ function submitModal(){
     const gId=uid(); fechas.forEach(fecha=>techs.forEach(t=>created.push({id:uid(),groupId:gId,fechaIni:fecha,ini,fechaFin:autoFechaFin(fecha,ini,fin),fin,tecnico:t,asunto,descripcion,categorias:[t],plannerV})));
   } else if (kind === "rollout"){
     const gId=uid();
-    const techs=vals("tecnicos"),fInit=val("fecha_ini"),perDay=parseInt(val("ptos_por_dia")),durMin=parseInt(val("dur_min")),iniHM=val("ini"),asunto=val("asunto")||"Rollout",descTpl=val("descripcion")||"{punto}",puntos=(val("puntos")||"").split("\n").map(s=>s.trim()).filter(Boolean),plannerV=val("planner")||"Si";
+    const techs=vals("tecnicos"),durMin=parseInt(val("dur_min"))||60,iniHM=val("ini")||"08:00",pre=(val("asunto")||"").trim(),descTpl=val("descripcion")||"{punto}",plannerV=val("planner")||"Si";
+    const lines=(val("puntos")||"").split("\n").map(s=>s.trim()).filter(Boolean);
     if(!techs.length) return toast("Selecciona al menos un técnico","err");
-    if(!puntos.length) return toast("Ingresa al menos un punto","err");
-    let techIdx=0,dayDate=fInit; while(isWeekend(new Date(dayDate+"T00:00:00"))) dayDate=addDays(dayDate,1);
-    let ptosHoy=0,slotIdx=0;
-    puntos.forEach(pto=>{
-      if(ptosHoy>=perDay){ dayDate=addDays(dayDate,1); while(isWeekend(new Date(dayDate+"T00:00:00"))) dayDate=addDays(dayDate,1); ptosHoy=0; slotIdx=0; }
-      const start=addMinutes(dayDate,iniHM,slotIdx*durMin),end=addMinutes(start.date,start.hm,durMin),t=techs[techIdx%techs.length];
-      created.push({id:uid(),groupId:gId,fechaIni:start.date,ini:start.hm,fechaFin:end.date,fin:end.hm,tecnico:t,asunto:`${asunto} ${pto}`,descripcion:descTpl.replaceAll("{punto}",pto),categorias:[t],plannerV});
-      techIdx++; ptosHoy++; slotIdx++;
+    if(!lines.length) return toast("Ingresa al menos un punto con su fecha","err");
+    let techIdx=0; const bad=[], slotByDate={};
+    lines.forEach(line=>{
+      const m=line.match(/^(.*?)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})(?:\s+(.+))?\s*$/);
+      if(!m){ bad.push(line); return; }
+      const pto=m[1].trim(), fecha=parseDMY(m[2]); if(!pto||!fecha){ bad.push(line); return; }
+      const horaLinea=parseHora(m[3]);
+      let start;
+      if(horaLinea){ start=addMinutes(fecha,horaLinea,0); }
+      else { const slot=slotByDate[fecha]||0; slotByDate[fecha]=slot+1; start=addMinutes(fecha,iniHM,slot*durMin); }
+      const end=addMinutes(start.date,start.hm,durMin), t=techs[techIdx%techs.length];
+      created.push({id:uid(),groupId:gId,fechaIni:start.date,ini:start.hm,fechaFin:end.date,fin:end.hm,tecnico:t,asunto:pre?`${pre} ${pto}`:pto,descripcion:descTpl.replaceAll("{punto}",pto),categorias:[t],plannerV});
+      techIdx++;
     });
+    if(bad.length) toast(`${bad.length} línea(s) sin fecha válida se omitieron (formato: Punto dd/mm/aaaa [hora])`,"err");
   } else if (kind === "rutinas"){
     const fInit=val("fecha_ini"),fEnd=val("fecha_fin"),techs=vals("tecnicos"),plannerV=val("planner")||"Si";
     if(!techs.length) return toast("Selecciona técnicos","err");
